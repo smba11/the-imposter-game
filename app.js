@@ -32,11 +32,15 @@ function render(html) {
 }
 
 /* =========================
-   LOBBY (ADD PLAYERS)
+   LOBBY NAV
 ========================= */
 
-function goLobby() {
-  // leaving a round just wipes round state but keeps player list
+function isRoundActive() {
+  // If a round has started we will have a category/word/imposter
+  return state.category !== null;
+}
+
+function resetRoundState() {
   state.alive = [];
   state.eliminated = [];
   state.cycle = 1;
@@ -45,12 +49,28 @@ function goLobby() {
   state.imposter = null;
   state.revealIndex = 0;
   state.votes = {};
+}
+
+function goLobby() {
+  // Confirm whenever leaving a round (anywhere)
+  if (isRoundActive()) {
+    const ok = confirm("Leave this round and go back to the lobby? (Round progress will reset)");
+    if (!ok) return;
+  }
+  resetRoundState();
   lobbyScreen();
 }
 
+/* =========================
+   LOBBY (ADD/REMOVE)
+========================= */
+
 function lobbyScreen() {
-  const pills = state.players.map((p) => `
-    <span class="pill">👤 ${esc(p)} <button class="btn" data-remove="${esc(p)}" style="padding:4px 8px;border-radius:10px;">✖</button></span>
+  const playerBoxes = state.players.map((p) => `
+    <button class="btn playerBox" type="button" aria-label="Player ${esc(p)}">
+      <span class="playerName">👤 ${esc(p)}</span>
+      <span class="x" data-remove="${esc(p)}" title="Remove ${esc(p)}">✖</span>
+    </button>
   `).join("");
 
   render(`
@@ -68,8 +88,10 @@ Add players (min 2), then start.
 </div>
 
 <div style="margin-top:12px;">
-  <b>Players:</b><br/>
-  ${pills || `<span class="pill">No players yet</span>`}
+  <b>Players:</b>
+  <div class="row" style="margin-top:8px;">
+    ${playerBoxes || `<span class="pill">No players yet</span>`}
+  </div>
 </div>
 
 <div class="term" style="margin-top:12px;">
@@ -99,10 +121,11 @@ Rules:
     if (e.key === "Enter") document.getElementById("add").click();
   };
 
-  document.querySelectorAll("[data-remove]").forEach(btn => {
-    btn.onclick = () => {
-      const who = btn.getAttribute("data-remove");
-      state.players = state.players.filter(p => p !== who);
+  document.querySelectorAll("[data-remove]").forEach((el) => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      const who = el.getAttribute("data-remove");
+      state.players = state.players.filter((p) => p !== who);
       lobbyScreen();
     };
   });
@@ -226,12 +249,12 @@ Do 2–3 rounds in real life:
 ========================= */
 
 function votingScreen() {
-  const voter = state.alive.find(p => !(p in state.votes));
+  const voter = state.alive.find((p) => !(p in state.votes));
   if (!voter) return resultsScreen();
 
   const boxes = state.alive
-    .filter(p => p !== voter)
-    .map(p => `<button class="btn voteBox" data-name="${esc(p)}">👤 ${esc(p)}</button>`)
+    .filter((p) => p !== voter)
+    .map((p) => `<button class="btn voteBox" data-name="${esc(p)}">👤 ${esc(p)}</button>`)
     .join("");
 
   render(`
@@ -251,7 +274,7 @@ Tap who you think is the imposter:
 </div>
   `);
 
-  document.querySelectorAll(".voteBox").forEach(btn => {
+  document.querySelectorAll(".voteBox").forEach((btn) => {
     btn.onclick = () => {
       const suspect = btn.getAttribute("data-name");
       state.votes[voter] = suspect;
@@ -268,7 +291,7 @@ Tap who you think is the imposter:
 
 function resultsScreen() {
   const tally = {};
-  Object.values(state.votes).forEach(v => {
+  Object.values(state.votes).forEach((v) => {
     tally[v] = (tally[v] || 0) + 1;
   });
 
@@ -286,11 +309,13 @@ function resultsScreen() {
 
   const votesCast = Object.keys(state.votes).length;
 
-  const analyticsLines = state.alive.map(p => {
-    const c = tally[p] || 0;
-    const pct = votesCast ? Math.round((c / votesCast) * 100) : 0;
-    return `${p}: ${c} vote(s) (${pct}%)`;
-  }).join("\n");
+  const analyticsLines = state.alive
+    .map((p) => {
+      const c = tally[p] || 0;
+      const pct = votesCast ? Math.round((c / votesCast) * 100) : 0;
+      return `${p}: ${c} vote(s) (${pct}%)`;
+    })
+    .join("\n");
 
   // TIE: skip elimination
   if (topPlayers.length > 1) {
@@ -322,7 +347,7 @@ ${state.alive.join(", ")}
 
   // elimination
   const eliminated = topPlayers[0];
-  state.alive = state.alive.filter(p => p !== eliminated);
+  state.alive = state.alive.filter((p) => p !== eliminated);
   state.eliminated.push(eliminated);
 
   // win checks
