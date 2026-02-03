@@ -1,4 +1,4 @@
-const screen = document.getElementById("screen"); 
+const screen = document.getElementById("screen");
 
 const GAME_CATEGORIES = {
   "🦁 Animals": ["Lion","Elephant","Penguin","Dolphin","Eagle","Tiger","Giraffe","Zebra","Kangaroo","Panda"],
@@ -14,53 +14,49 @@ const esc = (s) =>
 
 const state = {
   players: [],
+  alive: [],
+  eliminated: [],
   round: 1,
+  cycle: 1,
   category: null,
   word: null,
   imposter: null,
-
-  alive: [],
-  eliminated: [],
-  cycle: 1, // voting cycles inside a single round
-
   revealIndex: 0,
-  votes: {} // voter -> suspect
+  votes: {}
 };
 
 function render(html) {
   screen.innerHTML = html;
 }
 
-/* ---------------- Setup ---------------- */
+/* ---------- SETUP ---------- */
 
 function setupScreen() {
-  const pills = state.players.map((p) => `<span class="pill">👤 ${esc(p)}</span>`).join("");
+  const pills = state.players.map(p => `<span class="pill">👤 ${esc(p)}</span>`).join("");
 
   render(`
-    <div class="term">
-Add players (min 2). Then start the round.
+<div class="term">
+Add players (min 2), then start.
 
 Rules:
-• 1 imposter 🕵️ 
-• Everyone else sees the secret word ✅
-• Pass the phone to reveal roles privately 📱
-• Discuss, then vote people out 🗳️
-• Game ends when:
-  - imposter is eliminated ✅ OR
-  - 2 players remain and one is imposter 😈
-    </div>
+• 1 Imposter 🕵️
+• Everyone else sees the word
+• Vote players out
+• Tie = no elimination
+• Final 2 with imposter = imposter wins
+</div>
 
-    <div class="row">
-      <input id="name" class="input" placeholder="Player name..." />
-      <button id="add" class="btn">➕ Add</button>
-      <button id="start" class="btn" ${state.players.length < 2 ? "disabled" : ""}>🚀 Start Round</button>
-      <button id="reset" class="btn">🧹 Reset</button>
-    </div>
+<div class="row">
+  <input id="name" class="input" placeholder="Player name" />
+  <button id="add" class="btn">➕ Add</button>
+  <button id="start" class="btn" ${state.players.length < 2 ? "disabled" : ""}>🚀 Start</button>
+  <button id="reset" class="btn">🧹 Reset</button>
+</div>
 
-    <div style="margin-top:10px;">
-      <b>Players:</b><br/>
-      ${pills || `<span class="pill">No players yet</span>`}
-    </div>
+<div style="margin-top:10px">
+<b>Players:</b><br/>
+${pills || "None"}
+</div>
   `);
 
   const name = document.getElementById("name");
@@ -68,275 +64,182 @@ Rules:
 
   document.getElementById("add").onclick = () => {
     const n = name.value.trim();
-    if (!n) return;
-    if (state.players.includes(n)) return alert("Name already used");
+    if (!n || state.players.includes(n)) return;
     state.players.push(n);
     name.value = "";
     setupScreen();
   };
 
-  document.getElementById("start").onclick = () => {
-    if (state.players.length < 2) return;
-    startRound();
-  };
-
+  document.getElementById("start").onclick = startRound;
   document.getElementById("reset").onclick = () => {
-    state.players = [];
-    state.round = 1;
+    Object.assign(state, { players: [], round: 1 });
     setupScreen();
-  };
-
-  name.onkeydown = (e) => {
-    if (e.key === "Enter") document.getElementById("add").click();
   };
 }
 
-/* ---------------- Round / Reveal ---------------- */ 
+/* ---------- ROUND ---------- */
 
 function startRound() {
-  const cats = Object.keys(GAME_CATEGORIES);
-  state.category = pick(cats);
+  state.category = pick(Object.keys(GAME_CATEGORIES));
   state.word = pick(GAME_CATEGORIES[state.category]);
   state.imposter = pick(state.players);
-
   state.alive = [...state.players];
   state.eliminated = [];
   state.cycle = 1;
-
-  state.revealIndex = 0;
   state.votes = {};
-
-  renderReveal(); 
+  state.revealIndex = 0;
+  renderReveal();
 }
+
+/* ---------- REVEAL ---------- */
 
 function renderReveal() {
   const p = state.alive[state.revealIndex];
-
   render(`
-    <div class="term">
-📱 PASS THE PHONE
+<div class="term">
+📱 PASS PHONE
 
-Player: ${esc(p)} (${state.revealIndex + 1}/${state.alive.length})
-Category: ${esc(state.category)}
+Player: ${p} (${state.revealIndex + 1}/${state.alive.length})
+Category: ${state.category}
+</div>
 
-Tap Reveal to see your role.
-Then hide it and pass the phone.
-    </div>
-
-    <div class="row">
-      <button id="reveal" class="btn">👀 Reveal</button>
-      <button id="quit" class="btn">🛑 Quit</button>
-    </div>
+<div class="row">
+  <button class="btn" id="reveal">👀 Reveal</button>
+</div>
   `);
 
   document.getElementById("reveal").onclick = () => renderRole(p);
-  document.getElementById("quit").onclick = () => setupScreen();
 }
 
-function renderRole(player) {
-  const isImp = player === state.imposter;
+function renderRole(p) {
+  const imp = p === state.imposter;
+  render(`
+<div class="term">
+${imp ? "🕵️ YOU ARE THE IMPOSTER" : "✅ YOU ARE NOT THE IMPOSTER"}
 
-  render(` 
-    <div class="term">
-${isImp ? "🕵️ YOU ARE THE IMPOSTER!" : "✅ YOU ARE NOT THE IMPOSTER"}
+Category: ${state.category}
+${imp ? "Secret Word: ???" : "Secret Word: " + state.word}
+</div>
 
-Category: ${esc(state.category)}
-${isImp ? "Secret Word: (you don't know it 😈)" : `Secret Word: ${esc(state.word)}`}
-
-Mission:
-${isImp ? "• Blend in • Listen for clues • Don't get caught" : "• Give 1-word clues • Catch the imposter"}
-    </div>
-
-    <div class="row">
-      <button id="hide" class="btn">🙈 Hide & Pass</button>
-    </div>
+<div class="row">
+  <button class="btn" id="hide">🙈 Hide & Pass</button>
+</div>
   `);
 
   document.getElementById("hide").onclick = () => {
     state.revealIndex++;
-    if (state.revealIndex >= state.alive.length) discussionScreen();
-    else renderReveal();
+    state.revealIndex >= state.alive.length ? discussionScreen() : renderReveal();
   };
 }
 
-/* ---------------- Discussion / Voting ---------------- */
+/* ---------- DISCUSSION ---------- */
 
 function discussionScreen() {
   render(`
-    <div class="term">
-💬 DISCUSSION TIME
+<div class="term">
+💬 DISCUSSION
 
-In real life, do 2–3 rounds:
-• Each player says ONE word clue
-• Don't say the exact secret word
-• Imposter tries to survive 😭
+Give 1-word clues.
+Cycle ${state.cycle}
+</div>
 
-When ready, start voting (Cycle ${state.cycle}). 
-    </div>
-
-    <div class="row">
-      <button id="vote" class="btn">🗳️ Start Voting</button>
-      <button id="quit" class="btn">🛑 Quit Round</button>
-    </div>
+<div class="row">
+  <button class="btn" id="vote">🗳️ Vote</button>
+</div>
   `);
 
-  document.getElementById("vote").onclick = () => votingScreen();
-  document.getElementById("quit").onclick = () => setupScreen();
+  document.getElementById("vote").onclick = votingScreen;
 }
 
-function votingScreen() {
-  const voter = state.alive.find((p) => !(p in state.votes));
-  if (!voter) return resultsScreen(); // end of this voting cycle
+/* ---------- VOTING ---------- */
 
-  const choices = state.alive
-    .filter((p) => p !== voter)
-    .map((p) => `<button class="btn voteBox" data-name="${esc(p)}">👤 ${esc(p)}</button>`)
-    .join("");
+function votingScreen() {
+  const voter = state.alive.find(p => !(p in state.votes));
+  if (!voter) return resultsScreen();
 
   render(`
-    <div class="term">
-🗳️ VOTING (Cycle ${state.cycle})
+<div class="term">
+🗳️ VOTING
 
-Voter: ${esc(voter)}
-Tap who you think is the imposter:
-    </div>
- 
-    <div class="row">
-      ${choices}
-    </div>
+Voter: ${voter}
+</div>
+
+<div class="row">
+${state.alive.filter(p => p !== voter)
+  .map(p => `<button class="btn voteBox" data-p="${p}">${p}</button>`).join("")}
+</div>
   `);
 
-  document.querySelectorAll(".voteBox").forEach((btn) => {
-    btn.onclick = () => {
-      const suspect = btn.getAttribute("data-name");
-      state.votes[voter] = suspect;
-      votingScreen(); 
+  document.querySelectorAll(".voteBox").forEach(b => {
+    b.onclick = () => {
+      state.votes[voter] = b.dataset.p;
+      votingScreen();
     };
   });
 }
 
-/* ---------------- Results / Elimination Loop ---------------- */
+/* ---------- RESULTS ---------- */
 
 function resultsScreen() {
-  // Tally votes
   const tally = {};
-  for (const suspect of Object.values(state.votes)) {
-    tally[suspect] = (tally[suspect] || 0) + 1;
+  Object.values(state.votes).forEach(v => tally[v] = (tally[v] || 0) + 1);
+
+  let top = -1;
+  let topPlayers = [];
+
+  for (const [name, count] of Object.entries(tally)) {
+    if (count > top) {
+      top = count;
+      topPlayers = [name];
+    } else if (count === top) {
+      topPlayers.push(name);
+    }
   }
 
-  // Pick eliminated: highest votes; if tie, skip elimination
-let top = -1;
-let topPlayers = [];
-
-for (const [name, count] of Object.entries(tally)) {
-  if (count > top) {
-    top = count;
-    topPlayers = [name];
-  } else if (count === top) {
-    topPlayers.push(name);
-  }
-}
-
-// 👉 TIE CASE: skip elimination
-if (topPlayers.length > 1) {
-  state.votes = {};
-  state.cycle++;
-  discussionScreen();
-  return;
-}
-
-// Single clear elimination
-const eliminated = topPlayers[0];
-
+  // 🔒 TIE = SKIP
+  if (topPlayers.length > 1) {
+    state.votes = {};
+    state.cycle++;
+    return discussionScreen();
   }
 
-  // Build tally lines (for remaining players)
-  const votesCast = Object.keys(state.votes).length;
-  const tallyLines = state.alive
-    .map((p) => {
-      const c = tally[p] || 0;
-      const pct = votesCast ? Math.round((c / votesCast) * 100) : 0; 
-      return `${p}: ${c} vote(s) (${pct}%)`;
-    })
-    .join("\n");
+  const eliminated = topPlayers[0];
+  state.alive = state.alive.filter(p => p !== eliminated);
+  state.eliminated.push(eliminated);
 
-  // Apply elimination
-  if (eliminated) {
-    state.alive = state.alive.filter((p) => p !== eliminated);
-    state.eliminated.push(eliminated);
-  }
-
-  // Win conditions
   if (eliminated === state.imposter) {
-    return finalScreen("🎯 GROUP WINS! You voted out the imposter ✅", tallyLines, eliminated);
+    return endScreen("🎯 GROUP WINS! Imposter eliminated.");
   }
 
   if (state.alive.length === 2 && state.alive.includes(state.imposter)) {
-    return finalScreen("🕵️ IMPOSTER WINS! Made it to the final 2 😈", tallyLines, eliminated);
+    return endScreen("🕵️ IMPOSTER WINS! Final 2.");
   }
 
-  // Continue game
-  render(`
-    <div class="term">
-📊 VOTE RESULTS (Cycle ${state.cycle})
-
-${tallyLines || "(no votes)"}
-
-Eliminated: ${eliminated ? eliminated : "(none)"} ❌
-Remaining Players (${state.alive.length}): ${state.alive.join(", ")}
-
-Next: discuss again, then vote again.
-    </div>
-
-    <div class="row">
-      <button id="next" class="btn">➡️ Next Discussion</button>
-      <button id="quit" class="btn">🛑 Quit Round</button>
-    </div>
-  `);
-
-  document.getElementById("next").onclick = () => {
-    state.votes = {};
-    state.cycle++;
-    discussionScreen();
-  };
-
-  document.getElementById("quit").onclick = () => setupScreen();
+  state.votes = {};
+  state.cycle++;
+  discussionScreen();
 }
 
-function finalScreen(message, tallyLines, eliminated) {
+/* ---------- END ---------- */
+
+function endScreen(msg) {
   render(`
-    <div class="term">
-🏁 ROUND OVER
+<div class="term">
+${msg}
 
-${message}
-
-Category: ${state.category}
 Secret Word: ${state.word}
 Imposter: ${state.imposter}
+Eliminated: ${state.eliminated.join(", ")}
+</div>
 
-Last Vote Tally:
-${tallyLines || "(no votes)"}
-
-Eliminated This Cycle: ${eliminated ? eliminated : "(none)"}
-Eliminated Total: ${state.eliminated.join(", ") || "(none)"}
-    </div>
-
-    <div class="row">
-      <button id="again" class="btn">🔁 Next Round</button>
-      <button id="reset" class="btn">🧹 Reset Players</button>
-    </div>
+<div class="row">
+  <button class="btn" id="again">🔁 New Round</button>
+  <button class="btn" id="reset">🧹 Reset</button>
+</div>
   `);
 
-  document.getElementById("again").onclick = () => {
-    state.round++;
-    startRound();
-  };
-
-  document.getElementById("reset").onclick = () => {
-    state.players = [];
-    state.round = 1;
-    setupScreen();
-  };
+  document.getElementById("again").onclick = startRound;
+  document.getElementById("reset").onclick = setupScreen;
 }
 
 setupScreen();
